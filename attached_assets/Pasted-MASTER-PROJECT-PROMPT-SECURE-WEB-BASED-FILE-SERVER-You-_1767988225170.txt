@@ -1,0 +1,292 @@
+MASTER PROJECT PROMPT: SECURE WEB-BASED FILE SERVER
+
+You are a senior backend systems engineer and full-stack architect.
+Your task is to design and implement a complete, production-grade, web-based File Server system aligned with enterprise file server principles used in real organizations.
+
+🎯 Project Goal
+
+Build a secure, multi-user, web-based File Server that allows authenticated users to upload, download, list, delete, and manage files stored on a central server, following real-world file server concepts such as permission management, access isolation, and secure file handling.
+
+The project must reflect the theoretical and practical understanding of file servers as described in the following references (already analyzed and incorporated):
+
+TechTarget: File Server fundamentals
+
+IBM: Network File System concepts
+
+TechTarget: Server Message Block (SMB) protocol concepts
+
+⚠️ Important:
+This is NOT an SMB/NFS implementation at kernel level.
+This is an application-level file server that conceptually follows SMB/NFS ideas such as:
+
+Centralized storage
+
+Client-server architecture
+
+Permission control
+
+Secure access
+
+File isolation
+
+Multi-user concurrency
+
+🧱 Required Architecture
+1️⃣ System Type
+
+Web-based client–server architecture
+
+Browser-based UI (no mobile app)
+
+Runs locally on developer machine
+
+Fully FREE (no paid services, no cloud)
+
+2️⃣ Technology Stack (MANDATORY)
+Backend
+
+Language: Python 3
+
+Framework: Flask
+
+Server type: HTTP REST-based server
+
+Database
+
+SQLite
+
+Used ONLY for:
+
+User authentication
+
+File metadata (file name, owner, size, upload time, path)
+
+NOT used to store actual file data (files must be stored as binary blobs on disk)
+
+File Storage
+
+Local filesystem
+
+Directory-based user isolation
+
+Example:
+
+storage/
+ ├── users/
+ │    ├── user_1/
+ │    ├── user_2/
+ │    └── user_3/
+
+3️⃣ Core Functional Requirements (ALL REQUIRED)
+🔐 Authentication & Security
+
+User registration
+
+User login
+
+Password hashing (NO plain-text passwords)
+
+Session-based authentication
+
+Access control so users can only see their own files
+
+📁 File Operations
+
+Upload files (any type: PDF, image, text, zip, etc.)
+
+Download files
+
+List uploaded files
+
+Delete files
+
+Prevent directory traversal attacks
+
+Enforce maximum file size limits
+
+👥 Multi-user Support
+
+Multiple users can use the system simultaneously
+
+Files are strictly isolated per user
+
+One user must NEVER access another user’s files
+
+🧾 File Metadata Management
+
+Store file metadata in SQLite:
+
+filename
+
+file size
+
+upload timestamp
+
+owner (user_id)
+
+Display metadata in UI
+
+4️⃣ UI / Frontend (IMPORTANT)
+
+Design a clean, modern, professional UI (not fancy animations, but polished):
+
+Login page
+
+Register page
+
+Dashboard page
+
+File upload form
+
+File list table with:
+
+File name
+
+Size
+
+Upload time
+
+Download button
+
+Delete button
+
+UI Tech:
+
+HTML
+
+CSS (clean layout)
+
+Optional: Bootstrap (if used, keep it simple)
+
+UI must look presentable for Zoho interview demo.
+
+5️⃣ System Design Principles (MUST FOLLOW)
+
+The implementation must clearly demonstrate:
+
+Centralized file storage (as per file server definition)
+
+Client-server separation
+
+Permission management
+
+Security awareness
+
+No file indexing or content processing
+(files are treated as binary blobs, like real file servers)
+
+Scalable folder-based architecture
+
+Separation of concerns:
+
+routes
+
+database
+
+storage
+
+templates
+
+6️⃣ Folder Structure (MANDATORY OUTPUT)
+
+Generate and explain this structure:
+
+file_server/
+ ├── app.py
+ ├── config.py
+ ├── database.db
+ ├── storage/
+ │    └── users/
+ ├── templates/
+ │    ├── login.html
+ │    ├── register.html
+ │    ├── dashboard.html
+ ├── static/
+ │    └── style.css
+ └── README.md
+
+7️⃣ Code Requirements
+
+You MUST provide:
+
+Complete backend code
+
+Database schema
+
+HTML templates
+
+CSS styling
+
+Comments explaining logic
+
+Secure coding practices
+
+⚠️ Do NOT skip code.
+⚠️ Do NOT give partial snippets.
+⚠️ Do NOT say “implement later”.
+
+8️⃣ Documentation (MANDATORY)
+
+Generate a README.md that includes:
+
+Project overview
+
+What is a file server (in simple words)
+
+How this project aligns with SMB/NFS concepts
+
+Features list
+
+Tech stack
+
+How to run the project step-by-step
+
+Security considerations
+
+Limitations
+
+Future improvements
+
+9️⃣ Interview & Presentation Support (MANDATORY)
+
+Also generate:
+
+5–7 interview explanation points
+
+3–5 architecture justification points
+
+5 common questions Zoho might ask with answers
+
+One 1-minute project explanation script
+
+🔟 Output Rules (VERY IMPORTANT)
+
+Deliver the project end-to-end
+
+No placeholders
+
+No missing files
+
+No “TODO”
+
+Everything must work together
+
+Assume the user is a final-year student, not an expert
+
+Keep explanations simple but professional
+
+✅ Final Objective
+
+The final output should be something that:
+
+Can be completed in ~10 days
+
+Can be fully demonstrated live
+
+Shows real system design thinking
+
+Matches Zoho’s expectations
+
+Is 100% free
+
+Is resume + interview ready
