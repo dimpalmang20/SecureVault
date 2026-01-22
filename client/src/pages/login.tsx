@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Shield, Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react";
@@ -6,21 +6,49 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiRequest("GET", "/api/profile");
+        if (res.ok) {
+          setLocation("/dashboard");
+        }
+      } catch {}
+    })();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await apiRequest("POST", "/api/login", { email, password });
+      toast({ title: "Login successful" });
       setLocation("/dashboard");
-    }, 800);
+    } catch (error: any) {
+      if (error.message.includes("403")) {
+        toast({ 
+          title: "Account not verified", 
+          description: "Please register again to verify your email.",
+          variant: "destructive" 
+        });
+        // Optionally redirect to register to trigger verification flow
+      } else {
+        toast({ title: "Login failed", description: "Invalid credentials", variant: "destructive" });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

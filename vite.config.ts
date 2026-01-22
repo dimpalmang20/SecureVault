@@ -42,7 +42,15 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
+    port: 5173,
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      }
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],

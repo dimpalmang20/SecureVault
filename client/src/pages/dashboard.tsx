@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { Link } from "wouter";
+import { useState, useRef, useEffect } from "react";
+import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield,
@@ -43,30 +43,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface FileItem {
   id: string;
   name: string;
   size: number;
   type: string;
-  uploadedAt: Date;
+  uploadedAt: string;
 }
 
-const mockFiles: FileItem[] = [
-  { id: "1", name: "Project_Proposal.pdf", size: 2456000, type: "application/pdf", uploadedAt: new Date("2026-01-08T10:30:00") },
-  { id: "2", name: "team_photo.jpg", size: 3200000, type: "image/jpeg", uploadedAt: new Date("2026-01-07T14:22:00") },
-  { id: "3", name: "financial_report.xlsx", size: 890000, type: "application/vnd.ms-excel", uploadedAt: new Date("2026-01-06T09:15:00") },
-  { id: "4", name: "presentation_v2.pptx", size: 5600000, type: "application/vnd.ms-powerpoint", uploadedAt: new Date("2026-01-05T16:45:00") },
-  { id: "5", name: "backup_data.zip", size: 15000000, type: "application/zip", uploadedAt: new Date("2026-01-04T11:00:00") },
-  { id: "6", name: "meeting_notes.txt", size: 12000, type: "text/plain", uploadedAt: new Date("2026-01-03T08:30:00") },
-];
-
 const getFileIcon = (type: string) => {
-  if (type.includes("image")) return FileImage;
-  if (type.includes("video")) return FileVideo;
-  if (type.includes("audio")) return FileAudio;
-  if (type.includes("zip") || type.includes("archive")) return FileArchive;
-  if (type.includes("text") || type.includes("document")) return FileText;
+  if (type?.includes("image")) return FileImage;
+  if (type?.includes("video")) return FileVideo;
+  if (type?.includes("audio")) return FileAudio;
+  if (type?.includes("zip") || type?.includes("archive")) return FileArchive;
+  if (type?.includes("text") || type?.includes("document") || type?.includes("pdf")) return FileText;
   return File;
 };
 
@@ -77,7 +70,8 @@ const formatFileSize = (bytes: number) => {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
 };
 
-const formatDate = (date: Date) => {
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -89,7 +83,9 @@ const formatDate = (date: Date) => {
 };
 
 export default function Dashboard() {
-  const [files, setFiles] = useState<FileItem[]>(mockFiles);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [deleteFile, setDeleteFile] = useState<FileItem | null>(null);
@@ -97,352 +93,345 @@ export default function Dashboard() {
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [userProfile, setUserProfile] = useState<{username: string, email: string, used_storage: number} | null>(null);
 
-  const filteredFiles = files.filter(file =>
+  useEffect(() => {
+    fetchFiles();
+    fetchProfile();
+  }, []);
+
+  const fetchFiles = async () => {
+    try {
+      const res = await apiRequest("GET", "/api/files");
+      const data = await res.json();
+      setFiles(data);
+    } catch (error) {
+      console.error("Failed to fetch files", error);
+      // If unauthorized, redirect to login
+      if ((error as Error).message.includes("401")) {
+        setLocation("/login");
+      }
+    }
+  };
+
+  const fetchProfile = async () => {
+    try {
+      const res = await apiRequest("GET", "/api/profile");
+      const data = await res.json();
+      setUserProfile(data);
+    } catch (error) {
+      console.error("Failed to fetch profile", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/logout");
+      setLocation("/login");
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    uploadFile(file);
+  };
+
+  const uploadFile = async (file: File) => {
+    setIsUploading(true);
+    setIsUploadOpen(true);
+    setUploadProgress(10); // Start progress
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      // Simulation of progress since fetch doesn't support it natively easily
+      const interval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 10, 90));
+      }, 100);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      clearInterval(interval);
+      setUploadProgress(100);
+
+      if (!res.ok) throw new Error("Upload failed");
+
+      toast({ title: "File uploaded successfully" });
+      fetchFiles();
+      fetchProfile();
+      setTimeout(() => {
+        setIsUploadOpen(false);
+        setUploadProgress(0);
+        setIsUploading(false);
+      }, 500);
+      
+    } catch (error) {
+      toast({ title: "Upload failed", variant: "destructive" });
+      setIsUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteFile) return;
+    
+    try {
+      await apiRequest("DELETE", `/api/delete/${deleteFile.id}`);
+      toast({ title: "File deleted" });
+      setFiles(files.filter(f => f.id !== deleteFile.id));
+      setDeleteFile(null);
+      fetchProfile();
+    } catch (error) {
+      toast({ title: "Delete failed", variant: "destructive" });
+    }
+  };
+
+  const handleDownload = (fileId: string) => {
+    window.location.href = `/api/download/${fileId}`;
+  };
+
+  const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-  const maxStorage = 1024 * 1024 * 1024; // 1 GB
-
-  const handleUpload = (uploadedFiles: FileList | null) => {
-    if (!uploadedFiles || uploadedFiles.length === 0) return;
-    
-    setIsUploading(true);
-    setUploadProgress(0);
-    
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsUploading(false);
-          setIsUploadOpen(false);
-          
-          Array.from(uploadedFiles).forEach(file => {
-            const newFile: FileItem = {
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-              name: file.name,
-              size: file.size,
-              type: file.type,
-              uploadedAt: new Date()
-            };
-            setFiles(prev => [newFile, ...prev]);
-          });
-          
-          return 0;
-        }
-        return prev + 10;
-      });
-    }, 100);
-  };
-
-  const handleDelete = () => {
-    if (deleteFile) {
-      setFiles(prev => prev.filter(f => f.id !== deleteFile.id));
-      setDeleteFile(null);
-    }
-  };
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    handleUpload(e.dataTransfer.files);
-  };
+  const totalSize = userProfile?.used_storage || 0;
+  // 100MB limit for demo
+  const storagePercentage = Math.min((totalSize / (100 * 1024 * 1024)) * 100, 100); 
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/50 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-display text-lg font-semibold">SecureVault</span>
+      {/* Sidebar - Desktop */}
+      <aside className="fixed left-0 top-0 bottom-0 w-64 border-r bg-card hidden md:flex flex-col z-20">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+              <Shield className="w-5 h-5 text-white" />
             </div>
-
-            <div className="flex items-center gap-4">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center gap-2" data-testid="button-user-menu">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="hidden sm:inline text-sm font-medium">John Doe</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-2 py-1.5 text-sm">
-                    <div className="font-medium">John Doe</div>
-                    <div className="text-muted-foreground text-xs">john@company.com</div>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/login" className="flex items-center cursor-pointer" data-testid="link-logout">
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Sign out
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            <span className="font-display text-xl font-semibold">SecureVault</span>
           </div>
-        </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="lg:col-span-2 border-0 shadow-md bg-gradient-to-br from-primary to-primary/80 text-white overflow-hidden relative">
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMtNi42MjcgMC0xMiA1LjM3My0xMiAxMnM1LjM3MyAxMiAxMiAxMiAxMi01LjM3MyAxMi0xMi01LjM3My0xMi0xMi0xMnptMCAxOGMtMy4zMTQgMC02LTIuNjg2LTYtNnMyLjY4Ni02IDYtNiA2IDIuNjg2IDYgNi0yLjY4NiA2LTYgNnoiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48L2c+PC9zdmc+')] opacity-30" />
-            <CardContent className="p-6 relative">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-white/80 text-sm mb-1">Storage Used</p>
-                  <h2 className="font-display text-3xl font-bold">{formatFileSize(totalSize)}</h2>
-                  <p className="text-white/70 text-sm mt-1">of {formatFileSize(maxStorage)}</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-                  <HardDrive className="w-6 h-6" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <Progress value={(totalSize / maxStorage) * 100} className="h-2 bg-white/20" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-md" data-testid="card-total-files">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm mb-1">Total Files</p>
-                  <h2 className="font-display text-3xl font-bold">{files.length}</h2>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <FolderOpen className="w-6 h-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-md" data-testid="card-recent-activity">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm mb-1">Recent Activity</p>
-                  <h2 className="font-display text-3xl font-bold">{formatDate(files[0]?.uploadedAt || new Date())}</h2>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search files..."
-              className="pl-10"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              data-testid="input-search"
-            />
-          </div>
-          <Button onClick={() => setIsUploadOpen(true)} className="gap-2" data-testid="button-upload">
-            <Upload className="w-4 h-4" />
-            Upload Files
+          <Button 
+            className="w-full justify-start gap-2 mb-6" 
+            size="lg"
+            onClick={() => setIsUploadOpen(true)}
+          >
+            <Plus className="w-5 h-5" />
+            Upload New File
           </Button>
+
+          <nav className="space-y-1">
+            <Button variant="secondary" className="w-full justify-start gap-3">
+              <FolderOpen className="w-4 h-4" />
+              My Files
+            </Button>
+            <Button variant="ghost" className="w-full justify-start gap-3">
+              <Clock className="w-4 h-4" />
+              Recent
+            </Button>
+            <Button variant="ghost" className="w-full justify-start gap-3">
+              <User className="w-4 h-4" />
+              Shared
+            </Button>
+            <Button variant="ghost" className="w-full justify-start gap-3">
+              <Trash2 className="w-4 h-4" />
+              Trash
+            </Button>
+          </nav>
         </div>
 
-        <Card className="border-0 shadow-md overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left py-4 px-6 font-medium text-muted-foreground text-sm">Name</th>
-                  <th className="text-left py-4 px-6 font-medium text-muted-foreground text-sm hidden sm:table-cell">Size</th>
-                  <th className="text-left py-4 px-6 font-medium text-muted-foreground text-sm hidden md:table-cell">Uploaded</th>
-                  <th className="text-right py-4 px-6 font-medium text-muted-foreground text-sm">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <AnimatePresence>
-                  {filteredFiles.map((file, index) => {
-                    const FileIcon = getFileIcon(file.type);
-                    return (
-                      <motion.tr
-                        key={file.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="border-b last:border-0 hover:bg-muted/30 transition-colors"
-                        data-testid={`row-file-${file.id}`}
-                      >
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                              <FileIcon className="w-5 h-5 text-primary" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-medium truncate" data-testid={`text-filename-${file.id}`}>{file.name}</p>
-                              <p className="text-xs text-muted-foreground sm:hidden">{formatFileSize(file.size)}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-6 text-muted-foreground hidden sm:table-cell" data-testid={`text-filesize-${file.id}`}>
-                          {formatFileSize(file.size)}
-                        </td>
-                        <td className="py-4 px-6 text-muted-foreground hidden md:table-cell" data-testid={`text-uploaded-${file.id}`}>
-                          {formatDate(file.uploadedAt)}
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              data-testid={`button-download-${file.id}`}
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-more-${file.id}`}>
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem className="gap-2">
-                                  <Download className="w-4 h-4" />
-                                  Download
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="gap-2 text-destructive focus:text-destructive"
-                                  onClick={() => setDeleteFile(file)}
-                                  data-testid={`button-delete-${file.id}`}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </AnimatePresence>
-              </tbody>
-            </table>
-
-            {filteredFiles.length === 0 && (
-              <div className="py-16 text-center">
-                <FolderOpen className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
-                <p className="text-muted-foreground">No files found</p>
-                {searchQuery && (
-                  <p className="text-sm text-muted-foreground mt-1">Try adjusting your search</p>
-                )}
-              </div>
-            )}
+        <div className="mt-auto p-6 border-t bg-muted/20">
+          <div className="mb-4">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="font-medium">Storage</span>
+              <span className="text-muted-foreground">{Math.round(storagePercentage)}%</span>
+            </div>
+            <Progress value={storagePercentage} className="h-2" />
+            <div className="text-xs text-muted-foreground mt-2">
+              {formatFileSize(totalSize)} used of 100 MB
+            </div>
           </div>
-        </Card>
+          
+          <div className="flex items-center gap-3 pt-4 border-t">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <User className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <div className="text-sm font-medium truncate">{userProfile?.username || "User"}</div>
+              <div className="text-xs text-muted-foreground truncate">{userProfile?.email}</div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}>
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="md:ml-64 p-4 md:p-8 min-h-screen">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="font-display text-2xl font-bold">My Files</h1>
+            <p className="text-muted-foreground">Manage your secure documents</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search files..." 
+                className="pl-9 bg-background" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="md:hidden">
+              <Button size="icon" variant="outline" onClick={() => setIsUploadOpen(true)}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {filteredFiles.length === 0 ? (
+           <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed rounded-xl bg-muted/10">
+             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+               <File className="w-8 h-8 text-muted-foreground" />
+             </div>
+             <h3 className="text-lg font-medium mb-1">No files found</h3>
+             <p className="text-muted-foreground max-w-sm mb-6">
+               Upload your first file to get started with SecureVault
+             </p>
+             <Button onClick={() => setIsUploadOpen(true)}>
+               <Upload className="w-4 h-4 mr-2" />
+               Upload File
+             </Button>
+           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredFiles.map((file) => {
+              const Icon = getFileIcon(file.type);
+              return (
+                <Card key={file.id} className="group hover:shadow-md transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleDownload(file.id)}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteFile(file)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    
+                    <h3 className="font-medium truncate mb-1" title={file.name}>{file.name}</h3>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{formatFileSize(file.size)}</span>
+                      <span>{formatDate(file.uploadedAt)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </main>
 
+      {/* Upload Dialog */}
       <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display">Upload Files</DialogTitle>
+            <DialogTitle>Upload File</DialogTitle>
             <DialogDescription>
-              Drag and drop files or click to browse
+              Drag and drop your file here or click to browse
             </DialogDescription>
           </DialogHeader>
           
-          <div
-            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-              dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            data-testid="dropzone-upload"
+          <div 
+            className={`
+              mt-4 border-2 border-dashed rounded-xl p-8 text-center transition-colors
+              ${dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"}
+            `}
+            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragActive(false);
+              if (e.dataTransfer.files?.[0]) uploadFile(e.dataTransfer.files[0]);
+            }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => handleUpload(e.target.files)}
-              data-testid="input-file"
-            />
-            
             {isUploading ? (
-              <div className="space-y-4">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                  <Upload className="w-6 h-6 text-primary animate-pulse" />
+              <div className="space-y-4 py-4">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto animate-pulse">
+                  <Upload className="w-6 h-6 text-primary" />
                 </div>
-                <div>
-                  <p className="font-medium mb-2">Uploading...</p>
-                  <Progress value={uploadProgress} className="h-2" />
-                  <p className="text-sm text-muted-foreground mt-2">{uploadProgress}%</p>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">Uploading...</div>
+                  <Progress value={uploadProgress} className="h-2 w-full" />
                 </div>
               </div>
             ) : (
-              <>
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <Plus className="w-6 h-6 text-primary" />
+              <div className="space-y-4 py-4">
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
+                  <Upload className="w-6 h-6 text-muted-foreground" />
                 </div>
-                <p className="font-medium mb-1">Drop files here</p>
-                <p className="text-sm text-muted-foreground">or click to browse</p>
-                <p className="text-xs text-muted-foreground mt-4">Maximum file size: 50 MB</p>
-              </>
+                <div>
+                  <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    Select File
+                  </Button>
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Max file size: 100MB
+                </div>
+              </div>
             )}
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsUploadOpen(false)} data-testid="button-cancel-upload">
-              Cancel
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteFile} onOpenChange={() => setDeleteFile(null)}>
+      {/* Delete Confirmation */}
+      <Dialog open={!!deleteFile} onOpenChange={(open) => !open && setDeleteFile(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-destructive" />
-              Delete File
-            </DialogTitle>
+            <DialogTitle>Delete File</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{deleteFile?.name}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setDeleteFile(null)} data-testid="button-cancel-delete">
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} data-testid="button-confirm-delete">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
-            </Button>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteFile(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

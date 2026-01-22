@@ -4,3 +4,25 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+
+
+# Dependencies
+node_modules/
+dist/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Database + uploads (do NOT push)
+server/securevault.db
+server/uploads/
+
+# Secrets
+.env
+
+# Replit/Trae/repl internal state
+.local/
+.replit

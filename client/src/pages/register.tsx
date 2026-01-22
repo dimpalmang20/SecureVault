@@ -6,14 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Register() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"register" | "otp">("register");
   const [isLoading, setIsLoading] = useState(false);
 
   const passwordChecks = [
@@ -22,13 +27,37 @@ export default function Register() {
     { label: "Contains uppercase", valid: /[A-Z]/.test(password) },
   ];
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      toast({ title: "Passwords do not match", variant: "destructive" });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await apiRequest("POST", "/api/register", { username, email, password });
+      toast({ title: "Registration successful", description: "Please check your email for OTP." });
+      setStep("otp");
+    } catch (error: any) {
+      toast({ title: "Registration failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      await apiRequest("POST", "/api/verify-otp", { email, otp });
+      toast({ title: "Account verified", description: "You can now login." });
+      setLocation("/login");
+    } catch (error: any) {
+      toast({ title: "Verification failed", description: error.message, variant: "destructive" });
+    } finally {
       setIsLoading(false);
-      setLocation("/dashboard");
-    }, 800);
+    }
   };
 
   return (
@@ -96,129 +125,133 @@ export default function Register() {
 
           <Card className="border-0 shadow-xl bg-card/80 backdrop-blur">
             <CardHeader className="space-y-1 pb-6">
-              <CardTitle className="text-2xl font-display">Create account</CardTitle>
+              <CardTitle className="text-2xl font-display">
+                {step === "register" ? "Create account" : "Verify Email"}
+              </CardTitle>
               <CardDescription>
-                Set up your secure file storage in seconds
+                {step === "register" 
+                  ? "Enter your details below to create your account" 
+                  : `We sent a code to ${email}. Please enter it below.`}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="username"
-                      type="text"
-                      placeholder="johndoe"
-                      className="pl-10"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      data-testid="input-username"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="name@company.com"
-                      className="pl-10"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      data-testid="input-email"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      className="pl-10 pr-10"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      data-testid="input-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      data-testid="button-toggle-password"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+              {step === "register" ? (
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input 
+                        id="username" 
+                        placeholder="johndoe" 
+                        className="pl-9" 
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
+                      />
+                    </div>
                   </div>
                   
-                  {password && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="space-y-1.5 pt-2"
-                    >
-                      {passwordChecks.map((check) => (
-                        <div key={check.label} className="flex items-center gap-2 text-xs">
-                          <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                            check.valid ? "bg-green-500/20 text-green-600" : "bg-muted text-muted-foreground"
-                          }`}>
-                            {check.valid && <Check className="w-3 h-3" />}
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input 
+                        id="email" 
+                        type="email" 
+                        placeholder="m@example.com" 
+                        className="pl-9" 
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input 
+                        id="password" 
+                        type={showPassword ? "text" : "password"} 
+                        className="pl-9 pr-9" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                      {passwordChecks.map((check, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <div className={`w-3 h-3 rounded-full flex items-center justify-center ${check.valid ? "bg-green-500/20 text-green-500" : "bg-muted text-muted-foreground"}`}>
+                            {check.valid && <Check className="w-2 h-2" />}
                           </div>
-                          <span className={check.valid ? "text-green-600" : "text-muted-foreground"}>
+                          <span className={check.valid ? "text-foreground" : "text-muted-foreground"}>
                             {check.label}
                           </span>
                         </div>
                       ))}
-                    </motion.div>
-                  )}
-                </div>
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="••••••••"
-                      className="pl-10"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      data-testid="input-confirm-password"
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input 
+                        id="confirmPassword" 
+                        type="password" 
+                        className="pl-9" 
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <Button className="w-full" type="submit" disabled={isLoading}>
+                    {isLoading ? "Creating account..." : "Create account"}
+                    {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="otp">Verification Code</Label>
+                    <Input 
+                      id="otp" 
+                      placeholder="123456" 
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      required
+                      maxLength={6}
+                      className="text-center text-2xl tracking-widest"
                     />
                   </div>
-                  {confirmPassword && password !== confirmPassword && (
-                    <p className="text-xs text-destructive">Passwords don't match</p>
-                  )}
-                </div>
+                  <Button className="w-full" type="submit" disabled={isLoading}>
+                    {isLoading ? "Verifying..." : "Verify & Continue"}
+                  </Button>
+                </form>
+              )}
 
-                <Button
-                  type="submit"
-                  className="w-full h-11 font-medium"
-                  disabled={isLoading}
-                  data-testid="button-register"
-                >
-                  {isLoading ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      Create account
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </form>
-
-              <div className="mt-6 text-center text-sm text-muted-foreground">
-                Already have an account?{" "}
-                <Link href="/login" className="text-primary font-medium hover:underline" data-testid="link-login">
+              <div className="mt-6 text-center text-sm">
+                <span className="text-muted-foreground">Already have an account? </span>
+                <Link href="/login" className="font-medium text-primary hover:underline underline-offset-4">
                   Sign in
                 </Link>
               </div>
